@@ -9,7 +9,6 @@ import ghidra.program.model.listing.Program;
 import ghidra.util.Msg;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -42,10 +41,10 @@ public final class GHSDemangler implements Demangler {
 		entry("__dv", "operator/"),
 		/* XXX below baseNames have not been seen - guess from libiberty cplus-dem.c */
 		entry("__adv", "operator/="),
-		entry("__nw", "operator new"),
-		entry("__dl", "operator delete"),
-		entry("__vn", "operator new[]"),
-		entry("__vd", "operator delete[]"),
+		entry("__nw", "operator.new"),
+		entry("__dl", "operator.delete"),
+		entry("__vn", "operator.new[]"),
+		entry("__vd", "operator.delete[]"),
 		entry("__md", "operator%"),
 		entry("__amd", "operator%="),
 		entry("__mm", "operator--"),
@@ -161,7 +160,7 @@ public final class GHSDemangler implements Demangler {
 						int len = ReadInt(result.substring(loc), tmpWrap);
 						tmp = tmpWrap.getValue();
 
-						if (len == 0 || len > tmp.length()) throw new IllegalArgumentException("Bad string length \"" + len + "\".");
+						if (len == 0 || len > tmp.length()) throw new IllegalArgumentException("(DECOMPRESS) Bad string length \"" + len + "\".");
 
 						result += len + tmp.substring(0, len);
 						index = end + 1;
@@ -244,7 +243,6 @@ public final class GHSDemangler implements Demangler {
 		if (baseTypes.containsKey(name.charAt(0))) {
 			remainder.setValue(name.substring(1));
 			return baseTypes.get(name.charAt(0)) + "#";
-
 		}
 		/* e.g. "Q2_3std4move__tm__2_w" => "std::move<wchar_t>#" */
 		else if (name.startsWith("Q"))
@@ -364,7 +362,7 @@ public final class GHSDemangler implements Demangler {
 		StringWrapper nameWrapper = new StringWrapper();
 		int len = ReadInt(name, nameWrapper);
 		name = nameWrapper.getValue();
-		if (len == 0 || name.length() < len) throw new IllegalArgumentException("Bad string length \"" + len + "\".");
+		if (len == 0 || name.length() < len) throw new IllegalArgumentException("(READ STRING) Bad string length \"" + len + "\".");
 
 		remainder.setValue(name.substring(len));
 		return DemangleTemplate(name.substring(0, len));
@@ -582,12 +580,11 @@ public final class GHSDemangler implements Demangler {
 
 		/* TODO this may not be right - see S below Q */
 		/* h__S__Q1_3clsFi => static cls::h(int) */
-		String declStatic;
+		boolean isStatic = false;
+
 		if (mangle.getValue().startsWith("S__")) {
-			declStatic = "static ";
+			isStatic = true;
 			mangle.setValue(mangle.getValue().substring(3));
-		} else {
-			declStatic = "";
 		}
 		String declNameSpace, declClass;
 		if (mangle.getValue().startsWith("Q")) {
@@ -612,16 +609,15 @@ public final class GHSDemangler implements Demangler {
 
 		/* static */
 		if (mangle.getValue().startsWith("S")) {
-			declStatic = "static ";
+			isStatic = true;
 			mangle.setValue(mangle.getValue().substring(1));
 		}
 
-		String declConst;
+		boolean isConst = false;
 		if (mangle.getValue().startsWith("C")) {
-			declConst = " const";
+			isConst = true;
 			mangle.setValue(mangle.getValue().substring(1));
-		} else
-			declConst = "";
+		}
 
 		String declType;
 		if (mangle.getValue().startsWith("F"))
@@ -632,63 +628,99 @@ public final class GHSDemangler implements Demangler {
 		/* XXX bit of a hack - some names I see seem to end with _<number> */
 		int end;
 		if (mangle.getValue().startsWith("_")) {
-			try {
-				end = Integer.parseInt(mangle.getValue().substring(1));
+			end = Integer.parseInt(mangle.getValue().substring(1));
 
-				baseName += "_" + end;
-				mangle.setValue("");
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
+			baseName += "_" + end;
+			mangle.setValue("");
 		}
 
 		if (mangle.getValue().length() > 0)
 			throw new IllegalArgumentException("Unknown modifier: \"" + mangle.getValue().charAt(0) + "\".");
 
-		result = (declStatic + declType.replace("(#)", " " + declNameSpace + baseName).replace("#", declNameSpace + baseName) + declConst)
-				.replace("::" + baseNames.get("__vtbl"), baseNames.get("__vtbl"));
+		result = ((isStatic ? "static " : "") + declType.replace("(#)", " " + declNameSpace + baseName).replace("#", declNameSpace + baseName) + (isConst ? " const" : "") )
+				.replace("::" + baseNames.get("__vtbl"), baseNames.get("__vtbl")); //TODO: no
 
 		//TODO: tons of hacks
 		//TODO: literally guessing how the demangler works
 		if(baseName.startsWith("::"))
 			baseName = baseName.substring(2);
 
+		Msg.info(GHSDemangler.class, "hello from demangler " + result + " | " + declType);
 
 		DemangledFunction demangled = new DemangledFunction(mangled, result, baseName);
 
 		if(declNameSpace.endsWith("::"))
 			declNameSpace = declNameSpace.substring(0, declNameSpace.length()-2);
 
-		demangled.setNamespace( new DemangledType(null, declNameSpace, declNameSpace) );
-		demangled.setStatic(!declStatic.isEmpty()); //shit
-		demangled.setCallingConvention( !declClass.isEmpty() ? "__thiscall" : "__stdcall" );
+		if(!declNameSpace.isEmpty())
+			demangled.setNamespace( new DemangledType(null, declNameSpace, declNameSpace) );
 
-		if(declType.charAt(0) == '#')
-			declType = declType.substring(2);
-		else
-			declType = declType.substring(1);
+		demangled.setStatic(isStatic);
+		//demangled.setCallingConvention( !declClass.isEmpty() ? "__thiscall" : "__stdcall" ); TODO: what does this mean
 
-		if(declType.charAt(declType.length()-1) == ')')
-			declType = declType.substring(declType.length()-1);
+		if(baseName.contains("::") && !baseName.contains("<class Z1 = "))
+			Msg.warn(GHSDemangler.class, result + " contains :: in basename (" + baseName + ')');
 
-		int runcounter = 0;
-		while( options.applySignature() ) {
-			if (runcounter > 10) {
-				Msg.warn(GHSDemangler.class, "i fucked something up");
-				break;
+		if(options.applySignature()) {
+
+			int runCounter = 0;
+
+			if(declType.startsWith("#(")) {
+				if(declType.length() > 1)
+					declType = declType.substring(2);
 			}
-			runcounter++;
-			int commaIndex = declType.indexOf(','); //this entire loop is a hack because I really do not want to look at this code much longer
-			if( commaIndex != -1 ) {
-				String parameter = declType.substring(0, commaIndex - 1);
-				demangled.addParameter(new DemangledDataType(null, parameter, parameter));
-				declType = declType.substring(commaIndex);
-			}
-			else if ( !declType.isEmpty() ) {
-				demangled.addParameter( new DemangledDataType( null, declType, declType)); //SHOULD be last type, we'll see about that, though.
-			} else {
 
-				break;
+			int countOpenBraces = 0;
+			int countCloseBraces = 0;
+
+			for(int i=0; i < declType.length(); i++)
+			{
+				char character = declType.charAt(i);
+				if( character == '(') {
+					countOpenBraces++;
+					break;
+				} else if( character == ')') {
+					countCloseBraces++;
+					break;
+				}
+			}
+
+			if( countOpenBraces != countCloseBraces ) {
+				if( declType.charAt(declType.length()-1) == ')' )
+					declType = declType.substring(0, declType.length() - 1);
+				else
+					System.out.println("string contains uneven amount of braces even though there is no trailing brace. weird");
+			}
+
+			while (true) {
+				if (runCounter > 20) {
+					Msg.warn(GHSDemangler.class, "infinite loop detected, tell devs (symbol " + result + ")");
+					break;
+				}
+				runCounter++;
+				int commaIndex = declType.indexOf(','); //this entire loop is a hack because I really do not want to look at this code much longer
+				if (commaIndex != -1) {
+					/*if(commaIndex < 2)
+						Msg.error(GHSDemangler.class, "(commaIndex) failure imminent on " + result);*/
+					String parameter = declType.substring(0, commaIndex);
+					Msg.warn(GHSDemangler.class, "param \"" + parameter + "\"");
+					demangled.addParameter(new DemangledDataType(null, parameter, parameter));
+					declType = declType.substring(commaIndex);
+					Msg.info(GHSDemangler.class, "remainder: \"" + declType + "\"");
+				} else if (!declType.isEmpty()) {
+					if (declType.matches(".*([#(),]).*")) {
+						Msg.warn(GHSDemangler.class, "fucks sake |" + declType + "| |" + result + "|");
+						if(declType.equals("#")) {
+							break;
+						}
+					}
+
+					Msg.warn(GHSDemangler.class, "last param \"" + declType + "\"");
+					demangled.addParameter(new DemangledDataType(null, declType, declType)); //SHOULD be last type, we'll see about that, though.
+					declType = "";
+				} else {
+					break;
+				}
 			}
 		}
 		//SUPER IMPORTANT TODO: we never check if the user has disabled guessed mangle patterns
