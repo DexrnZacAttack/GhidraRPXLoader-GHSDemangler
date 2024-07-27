@@ -20,9 +20,10 @@ import static java.util.Map.entry;
 //TODO: Ghidra-ify more
 public final class GHSDemangler implements Demangler {
 	private static List<DemangledDataType> arguments;
+	private static boolean isThunk;
 
-	private final static String[] templatePrefixes = new String[] { "tm", "ps", "pt" /* XXX from libiberty cplus-dem.c */ };
-	private final static Map<String, String> baseNames = Map.ofEntries( //TODO: turn this into ghidra-ified DemangledDataType.blah stuff
+	private static final String[] templatePrefixes = new String[] { "tm", "ps", "pt" /* XXX from libiberty cplus-dem.c */ };
+	private static final Map<String, String> baseNames = Map.ofEntries( //TODO: turn this into ghidra-ified DemangledDataType.blah stuff
 		entry("__vtbl", " virtual table"),
 		entry("__ct", "#"),
 		entry("__dt", "~#"),
@@ -83,18 +84,18 @@ public final class GHSDemangler implements Demangler {
 		entry('r', DemangledDataType.LONG_DOUBLE)
 	);
 	private final static Map<Character, String> typePrefixes = Map.ofEntries(
-		entry('U', "unsigned"),
-		entry('S', "signed"),
+		entry('U', DemangledDataType.UNSIGNED),
+		entry('S', DemangledDataType.SIGNED),
 		/* XXX below typePrefixes have not been seen - guess from libiberty cplus-dem.c */
-		entry('J', "__complex")
+		entry('J', DemangledDataType.COMPLEX)
 	);
 	private final static Map<Character, String> typeSuffixes = Map.ofEntries(
-		entry('P', "*"),
-		entry('R', "&"),
-		entry('C', "const"),
-		entry('V', "volatile"), /* XXX this is a guess! */
+		entry('P', DemangledDataType.PTR_NOTATION),
+		entry('R', DemangledDataType.REF_NOTATION),
+		entry('C', DemangledDataType.CONST),
+		entry('V', DemangledDataType.VOLATILE), /* XXX this is a guess! */
 		/* XXX below typeSuffixes have not been seen - guess from libiberty cplus-dem.c */
-		entry('u', "restrict")
+		entry('u', DemangledDataType.RESTRICT)
 	);
 
 	private static int ReadInt(String name, StringWrapper nameWrapper) {
@@ -570,13 +571,18 @@ public final class GHSDemangler implements Demangler {
 
 	@Override
 	public DemangledObject demangle(String mangled, DemanglerOptions options) { //TODO: get rid of StringWrapper
-		arguments = new ArrayList<>();
+		if ( !options.demangleOnlyKnownPatterns() && mangled.matches("^__ghs_thunk__0x[a-f 0-9]{8}__.*") ) { //regex here matches the memory address, if you are wondering
+			Msg.warn(GHSDemangler.class, "__ghs_thunk__ pattern is based on uneducated guesswork!!");
+			mangled = mangled.substring(25);
+			isThunk = true;
+		}
 
+		if (mangled.startsWith("__sti__")) {
+			throw new DemanglerParseException("\"__sti__\" pattern is unknown."); //TODO: terrible message
+		}
 
 		String result;
-		if (mangled.startsWith("__sti__")) {
-			throw new DemanglerParseException("symbol contains __sti__. i don't know what that means"); //TODO: terrible message
-		}
+		arguments = new ArrayList<>();
 		mangled = Decompress(mangled);
 
 		/*
@@ -674,6 +680,8 @@ public final class GHSDemangler implements Demangler {
 				demangled.addParameter(type);
 			//TODO: varargs are currently broken, they just add a "..." param instead of specifying varargs
 		}
+
+		demangled.setThunk(isThunk);
 
 		//SUPER IMPORTANT TODO: we never check if the user has disabled guessed mangle patterns
 		return demangled;
