@@ -20,11 +20,15 @@ public class GHSDemanglerAnalyzer extends AbstractDemanglerAnalyzer {
 					"WARNING: THIS DEMANGLER IS A HUGE HACK AND BASED ON GUESSWORK!!!";
 	private static final String OPTION_NAME_APPLY_SIGNATURE = "apply function signatures";
 	private static final String OPTION_DESCRIPTION_APPLY_SIGNATURE =
-			"apply decoded function signature alongside basename (Currently broken! do not use!)";
+			"apply decoded function signature alongside basename (a little sketchy, use at your own risk)";
+
+	//private static final String OPTION_NAME_APPLY_ONLY_KNOWN = "apply only known symbol patterns";
+	//private static final String OPTION_DESCRIPTION_APPLY_ONLY_KNOWN = "only apply known symbols patterns and exclude any based on guesswork";
 
 	private boolean applyFunctionSignature = false;
+	//private boolean applyOnlyKnown = true;
 
-	private GHSDemangler demangler = new GHSDemangler();
+	private final GHSDemangler demangler = new GHSDemangler();
 
 	public GHSDemanglerAnalyzer() {
 		super(NAME, DESCRIPTION);
@@ -39,12 +43,14 @@ public class GHSDemanglerAnalyzer extends AbstractDemanglerAnalyzer {
 	@Override
 	public void registerOptions(Options options, Program program) {
 		options.registerOption(OPTION_NAME_APPLY_SIGNATURE, applyFunctionSignature, null, OPTION_DESCRIPTION_APPLY_SIGNATURE);
+		//options.registerOption(OPTION_NAME_APPLY_ONLY_KNOWN, applyOnlyKnown, null, OPTION_DESCRIPTION_APPLY_ONLY_KNOWN);
 	}
 
 
 	@Override
 	public void optionsChanged(Options options, Program program) {
 		applyFunctionSignature = options.getBoolean(OPTION_NAME_APPLY_SIGNATURE, applyFunctionSignature);
+		//applyOnlyKnown = options.getBoolean(OPTION_NAME_APPLY_ONLY_KNOWN, applyOnlyKnown);
 	}
 
 
@@ -52,8 +58,8 @@ public class GHSDemanglerAnalyzer extends AbstractDemanglerAnalyzer {
 	protected DemangledObject doDemangle(String mangled, DemanglerOptions options, MessageLog log)
 			throws DemangledException {
 		options.setApplySignature(applyFunctionSignature);
-		DemangledObject demangled = demangler.demangle(mangled, options);
-		return demangled;
+		//options.setDemangleOnlyKnownPatterns(applyOnlyKnown);
+		return demangler.demangle(mangled, options);
 	}
 
 }
