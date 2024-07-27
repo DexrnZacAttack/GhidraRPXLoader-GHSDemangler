@@ -20,10 +20,9 @@ import static java.util.Map.entry;
 //TODO: Ghidra-ify more
 public final class GHSDemangler implements Demangler {
 	private static List<DemangledDataType> arguments;
-	private static boolean variadic = false;
 
 	private final static String[] templatePrefixes = new String[] { "tm", "ps", "pt" /* XXX from libiberty cplus-dem.c */ };
-	private final static Map<String, String> baseNames = Map.ofEntries(
+	private final static Map<String, String> baseNames = Map.ofEntries( //TODO: turn this into ghidra-ified DemangledDataType.blah stuff
 		entry("__vtbl", " virtual table"),
 		entry("__ct", "#"),
 		entry("__dt", "~#"),
@@ -44,7 +43,7 @@ public final class GHSDemangler implements Demangler {
 		entry("__dv", "operator/"),
 		/* XXX below baseNames have not been seen - guess from libiberty cplus-dem.c */
 		entry("__adv", "operator/="),
-		entry("__nw", "operator.new"),
+		entry("__nw", "operator.new"), //TODO: these 4 are modified, the rest is janky
 		entry("__dl", "operator.delete"),
 		entry("__vn", "operator.new[]"),
 		entry("__vd", "operator.delete[]"),
@@ -69,19 +68,19 @@ public final class GHSDemangler implements Demangler {
 		entry("__vc", "operator[]")
 	);
 	private final static Map<Character, String> baseTypes = Map.ofEntries(
-		entry('v', "void"),
-		entry('i', "int"),
-		entry('s', "short"),
-		entry('c', "char"),
-		entry('w', "wchar_t"),
-		entry('b', "bool"),
-		entry('f', "float"),
-		entry('d', "double"),
-		entry('l', "long"),
-		entry('L', "long long"),
-		entry('e', "..."),
+		entry('v', DemangledDataType.VOID),
+		entry('i', DemangledDataType.INT),
+		entry('s', DemangledDataType.SHORT),
+		entry('c', DemangledDataType.CHAR),
+		entry('w', DemangledDataType.WCHAR_T),
+		entry('b', DemangledDataType.BOOL),
+		entry('f', DemangledDataType.FLOAT),
+		entry('d', DemangledDataType.DOUBLE),
+		entry('l', DemangledDataType.LONG),
+		entry('L', DemangledDataType.LONG_LONG),
+		entry('e', DemangledDataType.VARARGS),
 		/* XXX below baseTypes have not been seen - guess from libiberty cplus-dem.c */
-		entry('r', "long double")
+		entry('r', DemangledDataType.LONG_DOUBLE)
 	);
 	private final static Map<Character, String> typePrefixes = Map.ofEntries(
 		entry('U', "unsigned"),
@@ -233,10 +232,8 @@ public final class GHSDemangler implements Demangler {
 
 			String t = ReadType(args, remainder.getValue(), remainder);
 			result += t.replace("#", "");
-			if( t.equals("...#") )
-				variadic = true;
-			else
-				arguments.add( new DemangledDataType( null, null, t.replace("#", "") ) ); //TODO: the return value is redundant now.
+			arguments.add( new DemangledDataType( null, null, t.replace("#", "") ) );
+			//TODO: the return value is redundant now.
 
 			args.add(t);
 		}
@@ -572,11 +569,11 @@ public final class GHSDemangler implements Demangler {
 	}
 
 	@Override
-	public DemangledObject demangle(String mangled, DemanglerOptions options) {
+	public DemangledObject demangle(String mangled, DemanglerOptions options) { //TODO: get rid of StringWrapper
 		arguments = new ArrayList<>();
 
 
-		String result; //TODO: terrible name
+		String result;
 		if (mangled.startsWith("__sti__")) {
 			throw new DemanglerParseException("symbol contains __sti__. i don't know what that means"); //TODO: terrible message
 		}
@@ -632,7 +629,7 @@ public final class GHSDemangler implements Demangler {
 
 		String declType;
 		if (mangle.getValue().startsWith("F"))
-			declType = ReadType(null, mangle.getValue(), mangle);
+			declType = ReadType(null, mangle.getValue(), mangle); //TODO: return is redundant
 		else
 			declType = "#";
 
@@ -651,20 +648,16 @@ public final class GHSDemangler implements Demangler {
 		result = ((isStatic ? "static " : "") + declType.replace("(#)", " " + declNameSpace + baseName).replace("#", declNameSpace + baseName) + (isConst ? " const" : "") )
 				.replace("::" + baseNames.get("__vtbl"), baseNames.get("__vtbl")); //TODO: no
 
-		//TODO: tons of hacks
-		//TODO: literally guessing how the demangler works
-		if(baseName.startsWith("::"))
+
+		if(baseName.startsWith("::")) { //TODO: this shouldn't be necessary
 			baseName = baseName.substring(2);
-
-		Msg.info(GHSDemangler.class, "hello from demangler " + result + " | " + declType);
-
-		if( baseName.isEmpty() || baseName.isBlank() )
-			Msg.error(GHSDemangler.class, "basename is empty!");
+		}
 
 		DemangledFunction demangled = new DemangledFunction(mangled, result, baseName);
 
-		if(declNameSpace.endsWith("::"))
-			declNameSpace = declNameSpace.substring(0, declNameSpace.length()-2);
+		if(declNameSpace.endsWith("::")) {
+			declNameSpace = declNameSpace.substring(0, declNameSpace.length() - 2);
+		}
 
 		if(!declNameSpace.isEmpty())
 			demangled.setNamespace( new DemangledType(null, declNameSpace, declNameSpace) );
@@ -675,75 +668,11 @@ public final class GHSDemangler implements Demangler {
 		if(baseName.contains("::") && !baseName.contains("<class Z1 = "))
 			Msg.warn(GHSDemangler.class, result + " contains :: in basename (" + baseName + ')');
 
-		/*if(options.applySignature()) {
-
-			int runCounter = 0;
-
-			if(declType.startsWith("#(")) {
-				declType = declType.substring(2);
-			}
-
-			int countOpenBraces = 0;
-			int countCloseBraces = 0;
-
-			for(int i=0; i < declType.length(); i++)
-			{
-				char character = declType.charAt(i);
-				if( character == '(') {
-					countOpenBraces++;
-					break;
-				} else if( character == ')') {
-					countCloseBraces++;
-					break;
-				}
-			}
-
-			if( countOpenBraces != countCloseBraces ) {
-				if( declType.charAt(declType.length()-1) == ')' )
-					declType = declType.substring(0, declType.length() - 1);
-				else
-					System.out.println("string contains uneven amount of braces even though there is no trailing brace. weird");
-			}
-
-			while (true) {
-				if (runCounter > 20) {
-					Msg.warn(GHSDemangler.class, "infinite loop detected, tell devs (symbol " + result + ")");
-					break;
-				}
-				runCounter++;
-				int commaIndex = declType.indexOf(','); //this entire loop is a hack because I really do not want to look at this code much longer
-				if (commaIndex != -1) {
-					if(commaIndex < 2)
-						Msg.error(GHSDemangler.class, "(commaIndex) failure imminent on " + result);
-					String parameter = declType.substring(0, commaIndex);
-					Msg.warn(GHSDemangler.class, "param \"" + parameter + "\"");
-					demangled.addParameter(new DemangledDataType(null, parameter, parameter));
-					declType = declType.substring(commaIndex);
-					Msg.info(GHSDemangler.class, "remainder: \"" + declType + "\"");
-				} else if (!declType.isEmpty()) {
-					if (declType.matches(".*([#(),]).*")) {
-						Msg.warn(GHSDemangler.class, "fucks sake |" + declType + "| |" + result + "|");
-						if(declType.equals("#")) {
-							break;
-						}
-					}
-
-					Msg.warn(GHSDemangler.class, "last param \"" + declType + "\"");
-					demangled.addParameter(new DemangledDataType(null, declType, declType)); //SHOULD be last type, we'll see about that, though.
-					declType = "";
-				} else {
-					break;
-				}
-			}
-		}*/
 
 		if(options.applySignature()) {
 			for (DemangledDataType type : arguments) //lol, lmao
 				demangled.addParameter(type);
-			/*if(variadic) //TODO: this doesn't actually work, it adds a "..." param to the function instead of signifying that its varargs
-				demangled.addParameter(new DemangledDataType(null, null, DemangledDataType.VARARGS ));*/
-			if(variadic)
-				throw new DemanglerParseException( "varargs are currently broken!" );
+			//TODO: varargs are currently broken, they just add a "..." param instead of specifying varargs
 		}
 
 		//SUPER IMPORTANT TODO: we never check if the user has disabled guessed mangle patterns
