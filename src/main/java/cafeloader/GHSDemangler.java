@@ -21,6 +21,7 @@ import static java.util.Map.entry;
 public final class GHSDemangler implements Demangler {
 	private static List<DemangledDataType> arguments;
 	private static boolean isThunk;
+	private static String mangled;
 
 	private static final String[] templatePrefixes = new String[] { "tm", "ps", "pt" /* XXX from libiberty cplus-dem.c */ };
 	private static final Map<String, String> baseNames = Map.ofEntries( //TODO: turn this into ghidra-ified DemangledDataType.blah stuff
@@ -111,7 +112,10 @@ public final class GHSDemangler implements Demangler {
 			i++;
 		}
 
-		nameWrapper.setValue(name.substring(i));
+		if(nameWrapper != null)
+			nameWrapper.setValue(name.substring(i));
+		else
+			mangled = name.substring(i);
 
 		return Integer.parseInt(name.substring(0, i));
 	}
@@ -188,7 +192,41 @@ public final class GHSDemangler implements Demangler {
 		return result;
 	}
 
-	private static String ReadNameSpace(String name, StringWrapper remainder) {
+	private static String ReadNameSpace(String name) {
+		if (name == null || name.isEmpty()) throw new IllegalArgumentException("Unexpected end of string. Expected \"Q\".");
+		if (!name.startsWith("Q")) throw new IllegalArgumentException("Unexpected character \"" + name.charAt(0) + "\". Expected \"Q\".");
+
+		StringWrapper outWrap = new StringWrapper();
+		int count = ReadInt(name.substring(1), outWrap);
+		name = outWrap.getValue();
+
+		if (count == 0) throw new IllegalArgumentException("Bad namespace count \"" + count + "\".");
+		if (name.isEmpty()) throw new IllegalArgumentException("Unexpected end of string. Expected \"_\".");
+		if (!name.startsWith("_")) throw new IllegalArgumentException("Unexpected character after namespace count \"" + name.charAt(0) + "\". Expected \"_\".");
+
+		mangled = name.substring(1);
+
+		String result = "";
+		for (int j = 0; j < count; j++) {
+			String current;
+			if (mangled.startsWith("Z")) {
+				int end = mangled.indexOf("Z", 1);
+
+				if (end == -1) throw new IllegalArgumentException("Unexpected end of string. Expected \"Z\".");
+
+				current = mangled.substring(0, end);
+				mangled = name.substring(end + 2);
+			} else {
+				current = ReadString(mangled, null);
+			}
+
+			result += (!result.isEmpty() ? "::" : "") + current;
+		}
+
+		return result;
+	}
+
+	private static String ReadNameSpaceSW(String name, StringWrapper remainder) { //TODO: duplicate code, remove alongside SW
 		if (name == null || name.isEmpty()) throw new IllegalArgumentException("Unexpected end of string. Expected \"Q\".");
 		if (!name.startsWith("Q")) throw new IllegalArgumentException("Unexpected character \"" + name.charAt(0) + "\". Expected \"Q\".");
 
@@ -249,17 +287,28 @@ public final class GHSDemangler implements Demangler {
 		return result;
 	}
 
+	private static void TransparentSWSet (StringWrapper target, String newValue) {//TODO: temporary helper function, remove alongside SW
+		if(target != null)
+			target.setValue(newValue);
+		else
+			mangled = newValue;
+	}
+
 	private static String ReadType(List<String> args, String name, StringWrapper remainder) {
 		if (name == null || name.isEmpty()) throw new IllegalArgumentException("Unexpected end of string. Expected a type.");
 
 		/* e.g. "i" => "int#" */
 		if (baseTypes.containsKey(name.charAt(0))) {
-			remainder.setValue(name.substring(1));
+			TransparentSWSet(remainder, name.substring(1));
 			return baseTypes.get(name.charAt(0)) + "#";
 		}
 		/* e.g. "Q2_3std4move__tm__2_w" => "std::move<wchar_t>#" */
-		else if (name.startsWith("Q"))
-			return ReadNameSpace(name, remainder) + "#";
+		else if (name.startsWith("Q")) {
+			if(remainder != null)
+				return ReadNameSpaceSW(name, remainder) + "#";
+			else
+				return ReadNameSpace(name) + "#";
+		}
 			/* e.g. "8MyStruct" => "MyStruct#" */
 		else if (Character.isDigit(name.charAt(0)))
 			return ReadString(name, remainder) + "#";
@@ -274,7 +323,7 @@ public final class GHSDemangler implements Demangler {
 			int end = name.indexOf("Z", 1);
 			if (end == -1) throw new IllegalArgumentException("Unexpected end of string. Expected \"Z\".");
 
-			remainder.setValue(name.substring(end + 1));
+			TransparentSWSet(remainder, name.substring(end + 1));
 			return name.substring(0, end) + "#";
 		}
 		/* e.g. "A2_i" => "int#[2]" */
@@ -321,7 +370,7 @@ public final class GHSDemangler implements Demangler {
 			}
 			if (args == null) {
 				if (name.isEmpty() || (name.startsWith("_") && parseable)) {
-					remainder.setValue(name);
+					TransparentSWSet(remainder, name);
 					return "#(" + declArgs + ")";
 				}
 
@@ -340,7 +389,7 @@ public final class GHSDemangler implements Demangler {
 
 			int arg = Integer.parseInt(name.substring(1, 2));
 
-			remainder.setValue(name.substring(2));
+			TransparentSWSet(remainder, name.substring(2));
 
 			if (args.size() < arg) throw new IllegalArgumentException("Bad argument number \"" + arg + "\".");
 
@@ -356,9 +405,9 @@ public final class GHSDemangler implements Demangler {
 			int arg = Integer.parseInt(name.substring(2, 3));
 
 			if (count > 1)
-				remainder.setValue("N" + (count - 1) + arg + name.substring(3));
+				TransparentSWSet(remainder, "N" + (count - 1) + arg + name.substring(3));
 			else
-				remainder.setValue(name.substring(3));
+				TransparentSWSet(remainder, name.substring(3));
 
 			if (args.size() < arg) throw new IllegalArgumentException("Bad argument number \"" + arg + "\".");
 
@@ -377,7 +426,11 @@ public final class GHSDemangler implements Demangler {
 		name = nameWrapper.getValue();
 		if (len == 0 || name.length() < len) throw new IllegalArgumentException("(READ STRING) Bad string length \"" + len + "\".");
 
-		remainder.setValue(name.substring(len));
+		if(remainder != null)
+			remainder.setValue(name.substring(len));
+		else
+			mangled = name.substring(len);
+
 		return DemangleTemplate(name.substring(0, len));
 	}
 
@@ -507,7 +560,7 @@ public final class GHSDemangler implements Demangler {
 		}
 	}
 
-	private static String ReadBaseName(String name, StringWrapper remainder) {
+	private static String ReadBaseName(String name) {
 		String opName;
 		int mstart;
 
@@ -533,12 +586,12 @@ public final class GHSDemangler implements Demangler {
 
 		/* not a special symbol name! */
 		if (mstart == -1) {
-			remainder.setValue("");
+			mangled = "";
 			return name;
 		}
 
 		/* something more interesting! */
-		remainder.setValue(name.substring(mstart + 2));
+		mangled = name.substring(mstart + 2);
 		name = name.substring(0, mstart);
 
 		/* check for "__ct__7MyClass" */
@@ -546,38 +599,40 @@ public final class GHSDemangler implements Demangler {
 			name = baseNames.get(name);
 		else if (name.equals("#")) name = opName;
 
-		while (StartsWithAny(remainder.getValue(), templatePrefixes)) {
+		while (StartsWithAny(mangled, templatePrefixes)) {
 			/* format of remainder should be <type>__<len>_<arg> */
-			int lstart = remainder.getValue().indexOf("__");
+			int lstart = mangled.indexOf("__");
 
-			if (lstart == -1) throw new IllegalArgumentException("Bad template argument: \"" + remainder + "\".");
+			if (lstart == -1) throw new IllegalArgumentException("Bad template argument: \"" + mangled + "\".");
 
 			/* shift across the template type */
-			name += "__" + remainder.getValue().substring(0, lstart);
-			remainder.setValue(remainder.getValue().substring(lstart + 2));
+			name += "__" + mangled.substring(0, lstart);
+			mangled = mangled.substring(lstart + 2);
 
-			int len = ReadInt(remainder.getValue(), remainder);
+			int len = ReadInt(mangled, null);
 
-			if (len == 0 || len > remainder.getValue().length()) throw new IllegalArgumentException("Bad template argument length: \"" + len + "\".");
+			if (len == 0 || len > mangled.length()) throw new IllegalArgumentException("Bad template argument length: \"" + len + "\".");
 
 			/* shift across the len and arg */
-			name += "__" + len + remainder.getValue().substring(0, len);
-			remainder.setValue(remainder.getValue().substring(len));
+			name += "__" + len + mangled.substring(0, len);
+			mangled = mangled.substring(len);
 
 			/* check if we've hit the end */
-			if (remainder.getValue().isEmpty()) return name;
+			if (mangled.isEmpty()) return name;
 
 			/* should be immediately followed with __ */
-			if (!remainder.getValue().startsWith("__"))
-				throw new IllegalArgumentException("Unexpected character(s) after template: \"" + remainder.getValue().charAt(0) + "\". Expected \"__\".");
-			remainder.setValue(remainder.getValue().substring(2));
+			if (!mangled.startsWith("__"))
+				throw new IllegalArgumentException("Unexpected character(s) after template: \"" + mangled.charAt(0) + "\". Expected \"__\".");
+			mangled = mangled.substring(2);
 		}
 
 		return DemangleTemplate(name);
 	}
 
 	@Override
-	public DemangledObject demangle(String mangled, DemanglerOptions options) { //TODO: get rid of StringWrapper
+	public DemangledObject demangle(String symbol, DemanglerOptions options) { //TODO: get rid of StringWrapper
+		mangled = symbol;
+
 		if ( !options.demangleOnlyKnownPatterns() && mangled.matches("^__ghs_thunk__0x[a-f 0-9]{8}__.*") ) { //regex here matches the memory address, if you are wondering
 			//Msg.warn(GHSDemangler.class, "__ghs_thunk__ pattern is based on uneducated guesswork!!");
 			mangled = mangled.substring(25);
@@ -596,20 +651,20 @@ public final class GHSDemangler implements Demangler {
 		 * This demangle method has basically turned into a hand-written LL(1) recursive descent parser.
 		 */
 
-		StringWrapper mangle = new StringWrapper();
-		String baseName = ReadBaseName(mangled, mangle);
+		String baseName = ReadBaseName(mangled);
 
 		/* TODO this may not be right - see S below Q */
 		/* h__S__Q1_3clsFi => static cls::h(int) */
 		boolean isStatic = false;
 
-		if (mangle.getValue().startsWith("S__")) {
+		if (mangled.startsWith("S__")) {
 			isStatic = true;
-			mangle.setValue(mangle.getValue().substring(3));
+			mangled = mangled.substring(3);
 		}
 		String declNameSpace, declClass;
-		if (mangle.getValue().startsWith("Q")) {
-			declNameSpace = ReadNameSpace(mangle.getValue(), mangle);
+
+		if (mangled.startsWith("Q")) {
+			declNameSpace = ReadNameSpace(mangled);
 
 			int last = declNameSpace.lastIndexOf("::");
 			if (last != -1)
@@ -618,8 +673,8 @@ public final class GHSDemangler implements Demangler {
 				declClass = declNameSpace;
 
 			declNameSpace += "::";
-		} else if (!mangle.getValue().isEmpty() && Character.isDigit(mangle.getValue().charAt(0))) {
-			declClass = ReadString(mangle.getValue(), mangle);
+		} else if (!mangled.isEmpty() && Character.isDigit(mangled.charAt(0))) {
+			declClass = ReadString(mangled, null); //TODO: passing mangled is unnecessary
 			declNameSpace = declClass + "::";
 		} else {
 			declNameSpace = "";
@@ -629,34 +684,34 @@ public final class GHSDemangler implements Demangler {
 		baseName = baseName.replace("#", declClass);
 
 		/* static */
-		if (mangle.getValue().startsWith("S")) {
+		if (mangled.startsWith("S")) {
 			isStatic = true;
-			mangle.setValue(mangle.getValue().substring(1));
+			mangled = mangled.substring(1);
 		}
 
 		boolean isConst = false;
-		if (mangle.getValue().startsWith("C")) {
+		if (mangled.startsWith("C")) {
 			isConst = true;
-			mangle.setValue(mangle.getValue().substring(1));
+			mangled = mangled.substring(1);
 		}
 
 		String declType;
-		if (mangle.getValue().startsWith("F"))
-			declType = ReadType(null, mangle.getValue(), mangle); //TODO: return is redundant
+		if (mangled.startsWith("F"))
+			declType = ReadType(null, mangled, null); //TODO: return is redundant
 		else
 			declType = "#";
 
 		/* XXX bit of a hack - some names I see seem to end with _<number> */
 		int end;
-		if (mangle.getValue().startsWith("_")) {
-			end = Integer.parseInt(mangle.getValue().substring(1));
+		if (mangled.startsWith("_")) {
+			end = Integer.parseInt(mangled.substring(1));
 
 			baseName += "_" + end;
-			mangle.setValue("");
+			mangled = "";
 		}
 
-		if (!mangle.getValue().isEmpty())
-			throw new IllegalArgumentException("Unknown modifier: \"" + mangle.getValue().charAt(0) + "\".");
+		if (!mangled.isEmpty())
+			throw new IllegalArgumentException("Unknown modifier: \"" + mangled.charAt(0) + "\".");
 
 		result = ((isStatic ? "static " : "") + declType.replace("(#)", " " + declNameSpace + baseName).replace("#", declNameSpace + baseName) + (isConst ? " const" : "") )
 				.replace("::" + baseNames.get("__vtbl"), baseNames.get("__vtbl")); //TODO: no
@@ -666,7 +721,7 @@ public final class GHSDemangler implements Demangler {
 			baseName = baseName.substring(2);
 		}
 
-		DemangledFunction demangled = new DemangledFunction(mangled, result, baseName);
+		DemangledFunction demangled = new DemangledFunction(symbol, result, baseName);
 
 		if(declNameSpace.endsWith("::")) { //TODO: this neither
 			declNameSpace = declNameSpace.substring(0, declNameSpace.length() - 2);
