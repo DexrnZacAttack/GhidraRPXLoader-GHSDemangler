@@ -17,16 +17,20 @@ public class GHSDemanglerAnalyzer extends AbstractDemanglerAnalyzer {
 	private static final String DESCRIPTION =
 			"After a function is created, this analyzer will attempt to demangle " +
 					"the name and apply datatypes to parameters." +
-					"WARNING: THIS DEMANGLER IS A HUGE HACK AND BASED ON GUESSWORK!!!";
+					"WARNING: this demangler is entirely based on guesswork, as GHS obviously isn't planning on releasing their documentation any time soon";
 	private static final String OPTION_NAME_APPLY_SIGNATURE = "apply function signatures";
 	private static final String OPTION_DESCRIPTION_APPLY_SIGNATURE =
-			"apply decoded function signature alongside basename (a little sketchy, use at your own risk)";
+			"apply decoded function signature alongside basename and class ";
 
 	private static final String OPTION_NAME_APPLY_ONLY_KNOWN = "apply only known symbol patterns";
 	private static final String OPTION_DESCRIPTION_APPLY_ONLY_KNOWN = "only apply known symbols patterns and exclude any based on guesswork";
 
-	private boolean applyFunctionSignature = false;
-	private boolean applyOnlyKnown = true;
+	private static final String OPTION_NAME_APPLY_CALLING_CONVENTION = "apply calling convention";
+	private static final String OPTION_DESCRIPTION_APPLY_CALLING_CONVENTION = "apply calling convention to functions";
+
+	private boolean applyFunctionSignature = true;
+	private boolean applyOnlyKnown = false;
+	private boolean applyCallingConvention = true;
 
 	private final GHSDemangler demangler = new GHSDemangler();
 
@@ -44,6 +48,7 @@ public class GHSDemanglerAnalyzer extends AbstractDemanglerAnalyzer {
 	public void registerOptions(Options options, Program program) {
 		options.registerOption(OPTION_NAME_APPLY_SIGNATURE, applyFunctionSignature, null, OPTION_DESCRIPTION_APPLY_SIGNATURE);
 		options.registerOption(OPTION_NAME_APPLY_ONLY_KNOWN, applyOnlyKnown, null, OPTION_DESCRIPTION_APPLY_ONLY_KNOWN);
+		options.registerOption(OPTION_NAME_APPLY_CALLING_CONVENTION, applyCallingConvention, null, OPTION_DESCRIPTION_APPLY_CALLING_CONVENTION);
 	}
 
 
@@ -51,6 +56,7 @@ public class GHSDemanglerAnalyzer extends AbstractDemanglerAnalyzer {
 	public void optionsChanged(Options options, Program program) {
 		applyFunctionSignature = options.getBoolean(OPTION_NAME_APPLY_SIGNATURE, applyFunctionSignature);
 		applyOnlyKnown = options.getBoolean(OPTION_NAME_APPLY_ONLY_KNOWN, applyOnlyKnown);
+		applyCallingConvention = options.getBoolean(OPTION_NAME_APPLY_CALLING_CONVENTION, applyCallingConvention);
 	}
 
 
@@ -59,6 +65,7 @@ public class GHSDemanglerAnalyzer extends AbstractDemanglerAnalyzer {
 			throws DemangledException {
 		options.setApplySignature(applyFunctionSignature);
 		options.setDemangleOnlyKnownPatterns(applyOnlyKnown);
+		options.setApplyCallingConvention(applyCallingConvention);
 		return demangler.demangle(mangled, options);
 	}
 

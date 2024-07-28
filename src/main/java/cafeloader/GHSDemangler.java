@@ -579,7 +579,7 @@ public final class GHSDemangler implements Demangler {
 	@Override
 	public DemangledObject demangle(String mangled, DemanglerOptions options) { //TODO: get rid of StringWrapper
 		if ( !options.demangleOnlyKnownPatterns() && mangled.matches("^__ghs_thunk__0x[a-f 0-9]{8}__.*") ) { //regex here matches the memory address, if you are wondering
-			Msg.warn(GHSDemangler.class, "__ghs_thunk__ pattern is based on uneducated guesswork!!");
+			//Msg.warn(GHSDemangler.class, "__ghs_thunk__ pattern is based on uneducated guesswork!!");
 			mangled = mangled.substring(25);
 			isThunk = true;
 		}
@@ -676,7 +676,10 @@ public final class GHSDemangler implements Demangler {
 			demangled.setNamespace( new DemangledType(null, declNameSpace, declNameSpace) );
 
 		demangled.setStatic(isStatic);
-		//demangled.setCallingConvention( !declClass.isEmpty() ? "__thiscall" : "__stdcall" ); TODO: what does this mean
+
+		if(options.applyCallingConvention())
+			demangled.setCallingConvention( !declClass.isEmpty() ? "__thiscall" : "__stdcall" ); //TODO: what does this mean
+		//TODO: surely there is some DemangledFunction.THISCALL constant from ghidra that we can use here
 
 		if(baseName.contains("::") && !baseName.contains("<class Z1 = "))
 			Msg.warn(GHSDemangler.class, result + " contains :: in basename (" + baseName + ')');
@@ -686,10 +689,7 @@ public final class GHSDemangler implements Demangler {
 			for (DemangledDataType type : arguments) //lol, lmao
 				demangled.addParameter(type);
 		}
-
 		demangled.setThunk(isThunk);
-
-		//SUPER IMPORTANT TODO: we never check if the user has disabled guessed mangle patterns
 		return demangled;
 	}
 	@Override
