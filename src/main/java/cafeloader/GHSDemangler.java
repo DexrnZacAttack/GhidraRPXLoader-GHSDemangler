@@ -233,7 +233,14 @@ public final class GHSDemangler implements Demangler {
 
 			String t = ReadType(args, remainder.getValue(), remainder);
 			result += t.replace("#", "");
-			arguments.add( new DemangledDataType( null, null, t.replace("#", "") ) );
+			if(t.equals("...#")) {
+				if( arguments.isEmpty() ) {
+					throw new DemanglerParseException("Demangler outputted varargs before any type was defined!");
+				}
+				arguments.get(arguments.size() - 1).setVarArgs();
+			} else
+				arguments.add( new DemangledDataType( null, null, t.replace("#", "") ) );
+
 			//TODO: the return value is redundant now.
 
 			args.add(t);
@@ -661,7 +668,7 @@ public final class GHSDemangler implements Demangler {
 
 		DemangledFunction demangled = new DemangledFunction(mangled, result, baseName);
 
-		if(declNameSpace.endsWith("::")) {
+		if(declNameSpace.endsWith("::")) { //TODO: this neither
 			declNameSpace = declNameSpace.substring(0, declNameSpace.length() - 2);
 		}
 
@@ -678,7 +685,6 @@ public final class GHSDemangler implements Demangler {
 		if(options.applySignature()) {
 			for (DemangledDataType type : arguments) //lol, lmao
 				demangled.addParameter(type);
-			//TODO: varargs are currently broken, they just add a "..." param instead of specifying varargs
 		}
 
 		demangled.setThunk(isThunk);
@@ -687,7 +693,7 @@ public final class GHSDemangler implements Demangler {
 		return demangled;
 	}
 	@Override
-	@SuppressWarnings("removal")
+	@SuppressWarnings("removal") //TODO: is this ok?
 	public DemangledObject demangle(String mangled, boolean canDemangle) throws DemangledException {
 		return demangle(mangled);
 	}
