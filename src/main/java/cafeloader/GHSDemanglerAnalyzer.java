@@ -28,9 +28,13 @@ public class GHSDemanglerAnalyzer extends AbstractDemanglerAnalyzer {
 	private static final String OPTION_NAME_APPLY_CALLING_CONVENTION = "apply calling convention";
 	private static final String OPTION_DESCRIPTION_APPLY_CALLING_CONVENTION = "apply calling convention to functions";
 
+	//private static final String OPTION_NAME_WRITE_LOGS = "write logs";
+	//private static final String OPTION_DESCRIPTION_WRITE_LOGS = "write debug logs into the ghidra user log";
+
 	private boolean applyFunctionSignature = true;
 	private boolean applyOnlyKnown = false;
-	private boolean applyCallingConvention = true;
+	private boolean applyCallingConvention = false;
+	//private boolean writeLogs = false;
 
 	private final GHSDemangler demangler = new GHSDemangler();
 
@@ -49,6 +53,7 @@ public class GHSDemanglerAnalyzer extends AbstractDemanglerAnalyzer {
 		options.registerOption(OPTION_NAME_APPLY_SIGNATURE, applyFunctionSignature, null, OPTION_DESCRIPTION_APPLY_SIGNATURE);
 		options.registerOption(OPTION_NAME_APPLY_ONLY_KNOWN, applyOnlyKnown, null, OPTION_DESCRIPTION_APPLY_ONLY_KNOWN);
 		options.registerOption(OPTION_NAME_APPLY_CALLING_CONVENTION, applyCallingConvention, null, OPTION_DESCRIPTION_APPLY_CALLING_CONVENTION);
+		//options.registerOption(OPTION_NAME_WRITE_LOGS, writeLogs, null, OPTION_DESCRIPTION_WRITE_LOGS);
 	}
 
 
@@ -57,6 +62,7 @@ public class GHSDemanglerAnalyzer extends AbstractDemanglerAnalyzer {
 		applyFunctionSignature = options.getBoolean(OPTION_NAME_APPLY_SIGNATURE, applyFunctionSignature);
 		applyOnlyKnown = options.getBoolean(OPTION_NAME_APPLY_ONLY_KNOWN, applyOnlyKnown);
 		applyCallingConvention = options.getBoolean(OPTION_NAME_APPLY_CALLING_CONVENTION, applyCallingConvention);
+		//writeLogs = options.getBoolean(OPTION_NAME_WRITE_LOGS, writeLogs);
 	}
 
 
@@ -66,6 +72,7 @@ public class GHSDemanglerAnalyzer extends AbstractDemanglerAnalyzer {
 		options.setApplySignature(applyFunctionSignature);
 		options.setDemangleOnlyKnownPatterns(applyOnlyKnown);
 		options.setApplyCallingConvention(applyCallingConvention);
+		//demangler.writeLogs = true;
 		return demangler.demangle(mangled, options);
 	}
 
