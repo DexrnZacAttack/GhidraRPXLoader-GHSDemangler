@@ -123,7 +123,7 @@ public final class GHSDemangler implements Demangler {
 
 		StringWrapper outWrap = new StringWrapper();
 		int decompressedLen = ReadInt(name, outWrap);
-		name = outWrap.getValue();
+		name = outWrap.value;
 
 		if (name.isEmpty()) throw new IllegalArgumentException("Unexpected end of string. Expected compressed symbol name.");
 		if (!name.startsWith("__"))
@@ -161,7 +161,7 @@ public final class GHSDemangler implements Demangler {
 						String tmp;
 						StringWrapper tmpWrap = new StringWrapper();
 						int len = ReadInt(result.substring(loc), tmpWrap);
-						tmp = tmpWrap.getValue();
+						tmp = tmpWrap.value;
 
 						if (len == 0 || len > tmp.length()) throw new IllegalArgumentException("(DECOMPRESS) Bad string length \"" + len + "\".");
 
@@ -194,7 +194,7 @@ public final class GHSDemangler implements Demangler {
 
 		StringWrapper outWrap = new StringWrapper();
 		int count = ReadInt(name.substring(1), outWrap);
-		name = outWrap.getValue();
+		name = outWrap.value;
 
 		if (count == 0) throw new IllegalArgumentException("Bad namespace count \"" + count + "\".");
 		if (name.isEmpty()) throw new IllegalArgumentException("Unexpected end of string. Expected \"_\".");
@@ -229,26 +229,26 @@ public final class GHSDemangler implements Demangler {
 
 		StringWrapper outWrap = new StringWrapper();
 		int count = ReadInt(name.substring(1), outWrap);
-		name = outWrap.getValue();
+		name = outWrap.value;
 
 		if (count == 0) throw new IllegalArgumentException("Bad namespace count \"" + count + "\".");
 		if (name.isEmpty()) throw new IllegalArgumentException("Unexpected end of string. Expected \"_\".");
 		if (!name.startsWith("_")) throw new IllegalArgumentException("Unexpected character after namespace count \"" + name.charAt(0) + "\". Expected \"_\".");
 
-		remainder.setValue(name.substring(1));
+		remainder.value = name.substring(1);
 
 		StringBuilder result = new StringBuilder();
 		for (int j = 0; j < count; j++) {
 			String current;
-			if (remainder.getValue().startsWith("Z")) {
-				int end = remainder.getValue().indexOf("Z", 1);
+			if (remainder.value.startsWith("Z")) {
+				int end = remainder.value.indexOf("Z", 1);
 
 				if (end == -1) throw new IllegalArgumentException("Unexpected end of string. Expected \"Z\".");
 
-				current = remainder.getValue().substring(0, end);
-				remainder.setValue(name.substring(end + 2));
+				current = remainder.value.substring(0, end);
+				remainder.value = name.substring(end + 2);
 			} else {
-				current = ReadString(remainder.getValue(), remainder);
+				current = ReadString(remainder.value, remainder);
 			}
 
 			result.append(!result.isEmpty() ? "::" : "");
@@ -262,12 +262,12 @@ public final class GHSDemangler implements Demangler {
 		StringBuilder result = new StringBuilder();
 		List<String> args = new ArrayList<>();
 
-		remainder.setValue(name);
+		remainder.value = name;
 
-		while (!remainder.getValue().isEmpty() && !remainder.getValue().startsWith("_")) {
+		while (!remainder.value.isEmpty() && !remainder.value.startsWith("_")) {
 			if (!args.isEmpty()) result.append(", ");
 
-			String type = ReadType(args, remainder.getValue(), remainder);
+			String type = ReadType(args, remainder.value, remainder);
 			String typeClean = type.replace("#", "");
 			result.append(typeClean);
 
@@ -295,7 +295,7 @@ public final class GHSDemangler implements Demangler {
 
 	private static void TransparentSWSet (StringWrapper target, String newValue) {//TODO: temporary helper function, remove alongside SW
 		if(target != null)
-			target.setValue(newValue);
+			target.value = newValue;
 		else
 			mangled = newValue;
 	}
@@ -348,7 +348,7 @@ public final class GHSDemangler implements Demangler {
 			} else {
 				StringWrapper nameWrapper = new StringWrapper();
 				len = Integer.toString(ReadInt(name, nameWrapper));
-				name = nameWrapper.getValue();
+				name = nameWrapper.value;
 			}
 
 			if (name.isEmpty()) throw new IllegalArgumentException("Unexpected end of string. Expected \"_\".");
@@ -361,7 +361,7 @@ public final class GHSDemangler implements Demangler {
 		else if (name.startsWith("F")) {
 			StringWrapper nameWrapper = new StringWrapper();
 			String declArgs = ReadArguments(name.substring(1), nameWrapper);
-			name = nameWrapper.getValue();
+			name = nameWrapper.value;
 
 			/* XXX bit of a hack - we're allowed not to have a return type on top level methods, which we detected by the args argument being null. */
 
@@ -429,7 +429,7 @@ public final class GHSDemangler implements Demangler {
 
 		StringWrapper nameWrapper = new StringWrapper();
 		int len = ReadInt(name, nameWrapper);
-		name = nameWrapper.getValue();
+		name = nameWrapper.value;
 		if (len == 0 || name.length() < len) throw new IllegalArgumentException("(READ STRING) Bad string length \"" + len + "\".");
 		TransparentSWSet(remainder, name.substring(len));
 		return DemangleTemplate(name.substring(0, len));
@@ -439,51 +439,51 @@ public final class GHSDemangler implements Demangler {
 		StringBuilder result = new StringBuilder();
 		List<String> args = new ArrayList<>();
 
-		remainder.setValue(name);
+		remainder.value = name;
 
-		while (!remainder.getValue().isEmpty() && !remainder.getValue().startsWith("_")) {
+		while (!remainder.value.isEmpty() && !remainder.value.startsWith("_")) {
 			if (!args.isEmpty()) result.append(", ");
 
 			String type, val;
 
-			if (remainder.getValue().startsWith("X")) {
+			if (remainder.value.startsWith("X")) {
 				/* X arguments represent named values */
 
-				remainder.setValue(remainder.getValue().substring(1));
-				if (remainder.getValue().isEmpty()) throw new IllegalArgumentException("Unexpected end of string. Expected a type.");
+				remainder.value = remainder.value.substring(1);
+				if (remainder.value.isEmpty()) throw new IllegalArgumentException("Unexpected end of string. Expected a type.");
 
-				if (Character.isDigit(remainder.getValue().charAt(0))) {
+				if (Character.isDigit(remainder.value.charAt(0))) {
 					/* arbitrary string */
 					type = "#";
 
-					val = ReadString(remainder.getValue(), remainder);
+					val = ReadString(remainder.value, remainder);
 				} else {
 					/* <type><encoding> */
-					type = ReadType(args, remainder.getValue(), remainder).replace("#", " #");
+					type = ReadType(args, remainder.value, remainder).replace("#", " #");
 
-					if (remainder.getValue().startsWith("L")) {
+					if (remainder.value.startsWith("L")) {
 						/* _<len>_<val> */
-						remainder.setValue(remainder.getValue().substring(1));
-						if (remainder.getValue().isEmpty()) throw new IllegalArgumentException("Unexpected end of string. Expected \"_\".");
-						if (!remainder.getValue().startsWith("_")) throw new IllegalArgumentException(
-								"Unexpected character after template parameter encoding \"" + remainder.getValue().charAt(0) + "\". Expected \"_\".");
+						remainder.value = remainder.value.substring(1);
+						if (remainder.value.isEmpty()) throw new IllegalArgumentException("Unexpected end of string. Expected \"_\".");
+						if (!remainder.value.startsWith("_")) throw new IllegalArgumentException(
+								"Unexpected character after template parameter encoding \"" + remainder.value.charAt(0) + "\". Expected \"_\".");
 
-						int len = ReadInt(remainder.getValue().substring(1), remainder);
+						int len = ReadInt(remainder.value.substring(1), remainder);
 
-						if (len == 0 || len > remainder.getValue().length() + 1)
+						if (len == 0 || len > remainder.value.length() + 1)
 							throw new IllegalArgumentException("Bad template parameter length: \"" + len + "\".");
-						if (!remainder.getValue().startsWith("_")) throw new IllegalArgumentException(
-								"Unexpected character after template parameter length \"" + remainder.getValue().charAt(0) + "\". Expected \"_\".");
+						if (!remainder.value.startsWith("_")) throw new IllegalArgumentException(
+								"Unexpected character after template parameter length \"" + remainder.value.charAt(0) + "\". Expected \"_\".");
 
-						remainder.setValue(remainder.getValue().substring(1));
-						val = remainder.getValue().substring(0, len);
-						remainder.setValue(remainder.getValue().substring(len));
+						remainder.value = remainder.value.substring(1);
+						val = remainder.value.substring(0, len);
+						remainder.value = remainder.value.substring(len);
 					} else
-						throw new IllegalArgumentException("Unknown template parameter encoding: \"" + remainder.getValue().charAt(0) + "\".");
+						throw new IllegalArgumentException("Unknown template parameter encoding: \"" + remainder.value.charAt(0) + "\".");
 				}
 			} else {
-				val = ReadType(args, remainder.getValue(), remainder).replace("#", "");
-				type = "class #";  //TODO: remove Z notation, ghidra doesn't parse it
+				val = ReadType(args, remainder.value, remainder).replace("#", "");
+				type = "class #";
 			}
 
 			/* TODO - the Z notation is ugly - we should resolve args? */
@@ -529,10 +529,10 @@ public final class GHSDemangler implements Demangler {
 
 			remainder = remainder.substring(lstart + 2);
 
-			StringWrapper wrapout = new StringWrapper();
+			StringWrapper wrapOut = new StringWrapper();
 
-			int len = ReadInt(remainder, wrapout);
-			remainder = wrapout.getValue();
+			int len = ReadInt(remainder, wrapOut);
+			remainder = wrapOut.value;
 
 			if (len == 0 || len > remainder.length()) throw new IllegalArgumentException("Bad template argument length: \"" + len + "\".");
 			if (!remainder.startsWith("_"))
@@ -541,7 +541,7 @@ public final class GHSDemangler implements Demangler {
 			String tmp;
 			StringWrapper tmpWrap = new StringWrapper();
 			String declArgs = ReadTemplateArguments(remainder.substring(1), tmpWrap);
-			tmp = tmpWrap.getValue();
+			tmp = tmpWrap.value;
 
 			/* avoid emitting the ">>" token */
 			if (declArgs.endsWith(">")) declArgs += " ";
@@ -577,7 +577,7 @@ public final class GHSDemangler implements Demangler {
 			StringWrapper stringOut = new StringWrapper();
 			/* a cast operator */
 			String type = ReadType(null, name.substring(4), stringOut).replace("#", "");
-			name = stringOut.getValue();
+			name = stringOut.value;
 			opName = "operator " + type;
 			name = "#" + name;
 		} else {
@@ -702,11 +702,12 @@ public final class GHSDemangler implements Demangler {
 		}
 
 		arguments = new ArrayList<>();
-		String declType;
+		/*String declType;
 		if (mangled.startsWith("F"))
 			declType = ReadType(null, mangled, null); //TODO: return is redundant
 		else
-			declType = "#";
+			declType = "#";*/
+		ReadType(null, mangled, null); //TODO: we shouldn't need to pass mangled
 
 		/* XXX bit of a hack - some names I see seem to end with _<number> */
 		int end;
