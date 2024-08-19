@@ -41,7 +41,7 @@ def getGitHash = {
     def stdout = new ByteArrayOutputStream()
     if (Os.isFamily(Os.FAMILY_WINDOWS)) {
 	    exec {
-	        commandLine 'cmd', 'git', 'rev-parse', '--short', 'HEAD'
+	        commandLine 'cmd', '/c', 'git', 'rev-parse', '--short', 'HEAD'
 	        standardOutput = stdout
 	    }
     } else {
