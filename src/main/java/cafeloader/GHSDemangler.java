@@ -16,12 +16,13 @@ import static java.util.Map.entry;
 public final class GHSDemangler implements Demangler {
 
 	private static List<DemangledDataType> arguments;
+	private static DemangledDataType returnType;
 	private static boolean isThunk = false;
 	private static boolean varargs = false;
 	private static String mangled;
 
 	private static final String[] templatePrefixes = new String[] { "tm", "ps", "pt" /* XXX from libiberty cplus-dem.c */ };
-	private static final Map<String, String> baseNames = Map.ofEntries( //TODO: turn this into ghidra-ified DemangledDataType.blah stuff
+	private static final Map<String, String> baseNames = Map.ofEntries(
 		entry("__vtbl", " virtual table"),
 		entry("__ct", "#"),
 		entry("__dt", "~#"),
@@ -90,8 +91,8 @@ public final class GHSDemangler implements Demangler {
 	private final static Map<Character, String> typeSuffixes = Map.ofEntries(
 		entry('P', DemangledDataType.PTR_NOTATION),
 		entry('R', DemangledDataType.REF_NOTATION),
-		entry('C', DemangledDataType.CONST), //TODO: Const isn't supported by ghidra, apparently?
-		//entry('C', ""),
+		//entry('C', DemangledDataType.CONST),
+		entry('C', ""), //trol
 		entry('V', DemangledDataType.VOLATILE), /* XXX this is a guess! */
 		/* XXX below typeSuffixes have not been seen - guess from libiberty cplus-dem.c */
 		entry('u', DemangledDataType.RESTRICT)
@@ -271,10 +272,15 @@ public final class GHSDemangler implements Demangler {
 			String typeClean = type.replace("#", "");
 			result.append(typeClean);
 
-			if(typeClean.equals("char const *"))
-				typeClean = "char *"; //TODO: hack!
-			else if(typeClean.equals("unsigned int"))
-				typeClean = "uint";
+			if(typeClean.equals("char *") || typeClean.equals("char  *")) {
+				DemangledDataType hackType = new DemangledDataType(null, null, DemangledDataType.CHAR); //TODO: hack!
+				hackType.setPointer64();
+				arguments.add(hackType);
+			} else if(typeClean.equals("unsigned int")) {
+				DemangledDataType hackType = new DemangledDataType(null, null, DemangledDataType.INT);
+				hackType.setUnsigned();
+				arguments.add(hackType);
+			}
 
 			if(typeClean.equals(DemangledDataType.VARARGS)) {
 				if (arguments.isEmpty()) {
@@ -282,15 +288,11 @@ public final class GHSDemangler implements Demangler {
 				}
 				//arguments.get(arguments.size() - 1).setVarArgs();
 				varargs = true;
-			} else //TODO: the demangler outputs types like "char const *" or "unsigned int" instead of just "char *" or "uint" so ghidra doesn't work properly with that
+			} else
 				arguments.add( new DemangledDataType( null, null, typeClean ) );
-
-			//TODO: the return value is redundant now.
-
 			args.add(type);
 		}
-
-		return result.toString();
+		return result.toString(); //TODO: this *Might* be redundant
 	}
 
 	private static void TransparentSWSet (StringWrapper target, String newValue) {//TODO: temporary helper function, remove alongside SW
@@ -640,7 +642,7 @@ public final class GHSDemangler implements Demangler {
 		return DemangleTemplate(nameBuilder.toString());
 	}
 
-	@Override
+	@Override  //TODO: the demangler outputs types like "char const *" or "unsigned int" instead of just "char *" or "uint" so ghidra doesn't work properly with that
 	public DemangledObject demangle(String symbol, DemanglerOptions options) { //TODO: get rid of StringWrapper
 		mangled = symbol;
 
@@ -668,7 +670,7 @@ public final class GHSDemangler implements Demangler {
 			isStatic = true;
 			mangled = mangled.substring(3);
 		}
-		String declNameSpace, declClass; //TODO: better name?
+		String declNameSpace, declClass;
 
 		if (mangled.startsWith("Q")) {
 			declNameSpace = ReadNameSpace(mangled);
@@ -680,7 +682,7 @@ public final class GHSDemangler implements Demangler {
 				declClass = declNameSpace;
 
 		} else if (!mangled.isEmpty() && Character.isDigit(mangled.charAt(0))) {
-			declClass = ReadString(null, null); //TODO: passing mangled is unnecessary
+			declClass = ReadString(null, null);
 			declNameSpace = declClass;
 		} else {
 			declNameSpace = "";
@@ -702,12 +704,15 @@ public final class GHSDemangler implements Demangler {
 		}
 
 		arguments = new ArrayList<>();
-		/*String declType;
+		String declType;
 		if (mangled.startsWith("F"))
-			declType = ReadType(null, mangled, null); //TODO: return is redundant
+			declType = ReadType(null, mangled, null); //TODO: we don't need to pass mangled
 		else
-			declType = "#";*/
-		ReadType(null, mangled, null); //TODO: we shouldn't need to pass mangled
+			declType = "#";
+
+		int returnIndex = declType.indexOf("(#)("); //TODO: bad no good bad bad hack
+		if( returnIndex != -1 )
+			returnType = new DemangledDataType(null, null, declType.substring(0, returnIndex));
 
 		/* XXX bit of a hack - some names I see seem to end with _<number> */
 		int end;
@@ -737,13 +742,16 @@ public final class GHSDemangler implements Demangler {
 
 		if(options.applySignature()) {
 			for (DemangledDataType type : arguments) //lol, lmao
-				demangled.addParameter(type);
+				demangled.addParameter(new DemangledParameter(type));
 
 			if(varargs) {
 				DemangledDataType variadic = new DemangledDataType(null, null, DemangledDataType.VARARGS);
 				variadic.setVarArgs();
-				demangled.addParameter(variadic);
+				demangled.addParameter(new DemangledParameter(variadic));
 			}
+
+			if(returnType != null)
+				demangled.setReturnType(returnType);
 		}
 		demangled.setThunk(isThunk);
 		return demangled;
