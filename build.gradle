@@ -1,3 +1,5 @@
+import org.apache.tools.ant.taskdefs.condition.Os
+
 // Builds a Ghidra Extension for a given Ghidra installation.
 //
 // An absolute path to the Ghidra installation directory must be supplied either by setting the 
@@ -37,9 +39,16 @@ def PATH_IN_ZIP = "${project.name}"
 
 def getGitHash = {
     def stdout = new ByteArrayOutputStream()
-    exec {
-        commandLine 'git', 'rev-parse', '--short', 'HEAD'
-        standardOutput = stdout
+    if (Os.isFamily(Os.FAMILY_WINDOWS)) {
+	    exec {
+	        commandLine 'cmd', 'git', 'rev-parse', '--short', 'HEAD'
+	        standardOutput = stdout
+	    }
+    } else {
+	    exec {
+	        commandLine 'git', 'rev-parse', '--short', 'HEAD'
+	        standardOutput = stdout
+	    }
     }
     return stdout.toString().trim()
 }
